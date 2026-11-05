@@ -390,9 +390,16 @@ class TestCliShow(unittest.TestCase):
             )
             self.assertEqual(_run(["ingest", "--db", db, root])[0], 0)
             code, out, _err = _run(["show", "--db", db, "01234567"])
+            lines = [line for line in out.splitlines() if line.strip()]
 
             self.assertEqual(code, 0)
-            self.assertLess(out.index("showword earlier"), out.index("showword later"))
+            self.assertEqual(
+                lines,
+                [
+                    "[2026-04-01 00:00] user: showword earlier",
+                    "[2026-04-02 00:00] user: showword later",
+                ],
+            )
 
     def test_show_unknown_id_exits_one(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -446,6 +453,58 @@ class TestCliShow(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("aaaa-1111-session", err)
             self.assertIn("aaaa-2222-session", err)
+
+    def test_show_width_cuts_long_text_to_one_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "transcripts")
+            db = os.path.join(tmp, "index.db")
+            text = "BEGIN " + ("x" * 80) + " ENDMARKER"
+            _write_jsonl(
+                os.path.join(root, "billing", "session.jsonl"),
+                [
+                    _event(
+                        text,
+                        session_id="0123456789abcdef",
+                        ts="2026-08-01T15:04:00Z",
+                    )
+                ],
+            )
+            self.assertEqual(_run(["ingest", "--db", db, root])[0], 0)
+            code, out, err = _run(
+                ["show", "--db", db, "--width", "40", "01234567"]
+            )
+            lines = [line for line in out.splitlines() if line.strip()]
+
+            self.assertEqual(code, 0, err)
+            self.assertEqual(len(lines), 1)
+            self.assertEqual(len(lines[0]), 40)
+            self.assertTrue(lines[0].startswith("[2026-08-01 15:04] user: "))
+            self.assertNotIn("ENDMARKER", out)
+
+    def test_show_full_prints_the_whole_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "transcripts")
+            db = os.path.join(tmp, "index.db")
+            text = "BEGIN " + ("x" * 80) + " ENDMARKER"
+            _write_jsonl(
+                os.path.join(root, "billing", "session.jsonl"),
+                [
+                    _event(
+                        text,
+                        session_id="0123456789abcdef",
+                        ts="2026-08-01T15:04:00Z",
+                    )
+                ],
+            )
+            self.assertEqual(_run(["ingest", "--db", db, root])[0], 0)
+            code, out, err = _run(
+                ["show", "--db", db, "--width", "40", "--full", "01234567"]
+            )
+
+            self.assertEqual(code, 0, err)
+            self.assertIn("BEGIN", out)
+            self.assertIn("ENDMARKER", out)
+            self.assertIn("[2026-08-01 15:04] user: ", out)
 
 
 class TestCliStats(unittest.TestCase):
@@ -625,9 +684,15 @@ class TestCliDemo(unittest.TestCase):
                 self.assertEqual(_run(["demo", "--dir", directory])[0], 0)
                 code, out, err = _run(["show", "--db", db, "a1b2c3d4"])
             self.assertEqual(code, 0, err)
-            lines = [line for line in out.splitlines() if line.strip()]
-            self.assertEqual(len(lines), 4, out)
-            self.assertIn("sqlite", lines[0].lower())
+            self.assertEqual(
+                [line for line in out.splitlines() if line.strip()],
+                [
+                    "[2026-10-03 14:02] user: For the Acme billing prototype, use SQLite for the database.",
+                    "[2026-10-03 14:02] assistant: SQLite is fine for a prototype. We can revisit the database later.",
+                    "[2026-10-03 14:10] user: Invoices must never be sent automatically. A person approves every one first.",
+                    "[2026-10-03 14:10] assistant: Agreed. I'll add an approval gate. Invoices stay pending until a person approves.",
+                ],
+            )
 
     def test_demo_output_lists_commands_that_run(self):
         with tempfile.TemporaryDirectory(dir=_scratch()) as tmp:

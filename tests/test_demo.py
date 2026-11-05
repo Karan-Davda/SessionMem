@@ -190,6 +190,28 @@ class TestDemoBuild(unittest.TestCase):
             self.assertIn("sqlite", october_3.lower())
             self.assertIn("postgres", october_20.lower())
 
+    def test_show_prints_messages_with_time_role_and_text(self):
+        with tempfile.TemporaryDirectory(dir=_scratch()) as tmp:
+            folder = os.path.join(tmp, "home")
+            directory = os.path.join(tmp, "demo")
+            os.makedirs(folder)
+            with _isolated_home(folder):
+                from sessionmem.demo import build
+                from tests.test_cli import _run
+
+                db = build(directory)
+                code, out, err = _run(["show", "--db", os.fspath(db), "a1b2c3d4"])
+            self.assertEqual(code, 0, err)
+            self.assertEqual(
+                [line for line in out.splitlines() if line.strip()],
+                [
+                    "[2026-10-03 14:02] user: For the Acme billing prototype, use SQLite for the database.",
+                    "[2026-10-03 14:02] assistant: SQLite is fine for a prototype. We can revisit the database later.",
+                    "[2026-10-03 14:10] user: Invoices must never be sent automatically. A person approves every one first.",
+                    "[2026-10-03 14:10] assistant: Agreed. I'll add an approval gate. Invoices stay pending until a person approves.",
+                ],
+            )
+
     def test_second_build_does_not_duplicate_rows(self):
         with tempfile.TemporaryDirectory(dir=_scratch()) as tmp:
             folder = os.path.join(tmp, "home")

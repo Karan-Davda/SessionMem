@@ -82,6 +82,8 @@ def _parser() -> argparse.ArgumentParser:
     )
 
     show = commands.add_parser("show", parents=[common])
+    show.add_argument("--width", type=int, default=300)
+    show.add_argument("--full", action="store_true")
     show.add_argument("session_id", nargs="?", default="")
 
     commands.add_parser("stats", parents=[common])
@@ -110,7 +112,7 @@ def _run(args: argparse.Namespace) -> int:
         if args.command == "timeline":
             return _timeline(conn, args)
         if args.command == "show":
-            return _show(conn, args.session_id)
+            return _show(conn, args)
         if args.command == "stats":
             return _stats(conn)
     finally:
@@ -153,7 +155,8 @@ def _timeline(conn, args: argparse.Namespace) -> int:
     return 0
 
 
-def _show(conn, prefix: str) -> int:
+def _show(conn, args: argparse.Namespace) -> int:
+    prefix = args.session_id
     if prefix == "":
         return _error("session id is empty")
     sessions = matching_sessions(conn, prefix)
@@ -168,8 +171,28 @@ def _show(conn, prefix: str) -> int:
             print(session_id, file=sys.stderr)
         return 1
     for message in session_messages(conn, prefix):
-        print(_one_line(message.text))
+        print(_show_line(message, width=args.width, full=args.full))
     return 0
+
+
+def _show_line(message, *, width: int, full: bool) -> str:
+    """Format one stored message. Without --full, keep a single clipped line."""
+    text = message.text or ""
+    if not full:
+        text = _one_line(text)
+    line = f"[{_show_stamp(message.ts)}] {message.role or ''}: {text}"
+    if full:
+        return line
+    return line[:width]
+
+
+def _show_stamp(ts: str | None) -> str:
+    """Turn a stored timestamp into YYYY-MM-DD HH:MM."""
+    if not ts:
+        return ""
+    day = ts[:10]
+    clock = ts[11:16] if len(ts) >= 16 else ""
+    return f"{day} {clock}".strip()
 
 
 def _stats(conn) -> int:
