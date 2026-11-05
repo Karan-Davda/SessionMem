@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 import sys
 from pathlib import Path
 
@@ -62,12 +63,23 @@ def _parser() -> argparse.ArgumentParser:
     search_cmd.add_argument("--role")
     search_cmd.add_argument("--project")
     search_cmd.add_argument("--since")
+    search_cmd.add_argument("--include-tools", action="store_true")
+    search_cmd.add_argument("--include-summaries", action="store_true")
     search_cmd.add_argument("-n", "--limit", type=int, default=10)
     search_cmd.add_argument("query")
 
     timeline_cmd = commands.add_parser("timeline", parents=[common])
     timeline_cmd.add_argument("--per-session", type=int, default=5)
+    timeline_cmd.add_argument("--include-tools", action="store_true")
+    timeline_cmd.add_argument("--include-summaries", action="store_true")
     timeline_cmd.add_argument("query")
+
+    demo_cmd = commands.add_parser("demo", parents=[common])
+    demo_cmd.add_argument(
+        "--dir",
+        default=None,
+        help="folder for the demo transcripts and index (default: ~/.sessionmem/demo)",
+    )
 
     show = commands.add_parser("show", parents=[common])
     show.add_argument("session_id", nargs="?", default="")
@@ -77,6 +89,8 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _run(args: argparse.Namespace) -> int:
+    if args.command == "demo":
+        return _demo(args)
     if args.command == "ingest":
         root = _transcript_root(args.root)
         if not root.is_dir():
@@ -105,12 +119,7 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _search(conn, args: argparse.Namespace) -> int:
-    hits = search(
-        conn,
-        args.query,
-        Filters(role=args.role, project=args.project, since=args.since),
-        limit=args.limit,
-    )
+    hits = search(conn, args.query, _filters(args), limit=args.limit)
     if not hits:
         print("No matches.")
         return 0
@@ -124,7 +133,7 @@ def _search(conn, args: argparse.Namespace) -> int:
 
 
 def _timeline(conn, args: argparse.Namespace) -> int:
-    groups = timeline(conn, args.query)
+    groups = timeline(conn, args.query, _filters(args))
     for group in groups:
         first = _date(group.hits[0].ts) if group.hits else ""
         last = _date(group.hits[-1].ts) if group.hits else ""
@@ -174,6 +183,38 @@ def _stats(conn) -> int:
     if report.first or report.last:
         print(f"{_date(report.first)} {_date(report.last)}".strip())
     return 0
+
+
+def _demo(args: argparse.Namespace) -> int:
+    """Build the fictional demo and print commands that query its index."""
+    from sessionmem.demo import build
+
+    directory = Path(args.dir).expanduser() if args.dir else _demo_dir()
+    db = build(directory)
+    project = directory / "projects" / "-home-demo-acme-billing"
+    database = shlex.quote(str(db))
+    print(f"Wrote {project}")
+    print(f"sessionmem search --db {database} 'approval gate'")
+    print(f"sessionmem timeline --db {database} sqlite")
+    print(f"sessionmem timeline --db {database} postgres")
+    print(f"sessionmem search --db {database} --include-tools ERROR")
+    print(f"sessionmem show --db {database} a1b2c3d4")
+    return 0
+
+
+def _demo_dir() -> Path:
+    """Default demo folder, chosen when the command runs so HOME is current."""
+    return Path.home() / ".sessionmem" / "demo"
+
+
+def _filters(args: argparse.Namespace) -> Filters:
+    return Filters(
+        role=getattr(args, "role", None),
+        project=getattr(args, "project", None),
+        since=getattr(args, "since", None),
+        include_tools=bool(getattr(args, "include_tools", False)),
+        include_summaries=bool(getattr(args, "include_summaries", False)),
+    )
 
 
 def _transcript_root(root: str | None) -> Path:

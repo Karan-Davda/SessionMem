@@ -24,6 +24,20 @@ class TestEventText(unittest.TestCase):
         }
         self.assertEqual(event_text(event), "first line\nsecond line")
 
+    def test_two_text_blocks_keep_the_words_separated(self):
+        event = {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "text", "text": "first"},
+                    {"type": "text", "text": "second"},
+                ]
+            },
+        }
+        text = event_text(event)
+        self.assertNotEqual(text, "firstsecond")
+        self.assertRegex(text, r"first\W+second")
+
     def test_tool_use_block_renders_name_and_json_input(self):
         payload = {"path": "foo.py"}
         event = {

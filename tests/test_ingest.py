@@ -250,6 +250,19 @@ class TestIngestFile(unittest.TestCase):
             self.assertEqual(len(zebrafish), 1)
             self.assertEqual(len(after), 1)
 
+    def test_newline_between_words_stays_searchable_as_two_words(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "session.jsonl")
+            _write_jsonl(path, [_user_event("alpha\nbeta")])
+            conn = connect(os.path.join(tmp, "index.db"))
+            ingest_file(conn, path, "demo")
+            beta = search(conn, "beta")
+            glued = search(conn, "alphabeta")
+            conn.close()
+
+            self.assertEqual(len(beta), 1)
+            self.assertEqual(len(glued), 0)
+
 
 class TestIngestTree(unittest.TestCase):
     def test_project_name_is_the_first_folder_under_the_root(self):
