@@ -295,17 +295,31 @@ class TestCliTimeline(unittest.TestCase):
                     ),
                 ],
             )
+            _write_jsonl(
+                os.path.join(root, "billing", "beta.jsonl"),
+                [
+                    _event(
+                        "rangeword only",
+                        session_id="beta-session-222",
+                        ts="2026-05-02T00:00:00Z",
+                        role="user",
+                    )
+                ],
+            )
             self.assertEqual(_run(["ingest", "--db", db, root])[0], 0)
             code, out, err = _run(["timeline", "--db", db, "rangeword"])
             lines = [line for line in out.splitlines() if line.strip()]
 
             self.assertEqual(code, 0, err)
-            headers = [
-                line for line in lines if "2026-04-01" in line and "2026-04-09" in line
-            ]
-            self.assertEqual(len(headers), 1)
-            self.assertRegex(headers[0], r"\b2\b")
-            hits = [line for line in lines if line not in headers]
+            self.assertEqual(
+                lines[0],
+                "session alpha-se | billing | 2026-04-01 to 2026-04-09 | 2 hits",
+            )
+            self.assertEqual(
+                lines[3],
+                "session beta-ses | billing | 2026-05-02 to 2026-05-02 | 1 hit",
+            )
+            hits = [lines[1], lines[2]]
             self.assertEqual(hits[0][: len("2026-04-01 user ")], "2026-04-01 user ")
             self.assertIn("first", hits[0])
             self.assertEqual(

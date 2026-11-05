@@ -128,9 +128,11 @@ def _timeline(conn, args: argparse.Namespace) -> int:
     for group in groups:
         first = _date(group.hits[0].ts) if group.hits else ""
         last = _date(group.hits[-1].ts) if group.hits else ""
+        count = len(group.hits)
+        label = "hit" if count == 1 else "hits"
         print(
-            f"{group.session_id or ''} {group.project or ''} "
-            f"{first} {last} {len(group.hits)}".rstrip()
+            f"session {_short_id(group.session_id)} | {group.project or ''} | "
+            f"{first} to {last} | {count} {label}"
         )
         shown = group.hits[: args.per_session]
         for hit in shown:
