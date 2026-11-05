@@ -51,16 +51,23 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
 
     ingest = commands.add_parser("ingest", parents=[common])
-    ingest.add_argument("root", help="folder of Claude Code transcripts")
+    ingest.add_argument(
+        "root",
+        nargs="?",
+        default=None,
+        help="folder of Claude Code transcripts (default: ~/.claude/projects)",
+    )
 
     search_cmd = commands.add_parser("search", parents=[common])
     search_cmd.add_argument("--role")
     search_cmd.add_argument("--project")
     search_cmd.add_argument("--since")
+    search_cmd.add_argument("-n", "--limit", type=int, default=10)
     search_cmd.add_argument("query")
 
     timeline_cmd = commands.add_parser("timeline", parents=[common])
     timeline_cmd.add_argument("--per-session", type=int, default=5)
+    timeline_cmd.add_argument("-n", "--limit", type=int, default=None)
     timeline_cmd.add_argument("query")
 
     show = commands.add_parser("show", parents=[common])
@@ -72,7 +79,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def _run(args: argparse.Namespace) -> int:
     if args.command == "ingest":
-        root = Path(args.root)
+        root = _transcript_root(args.root)
         if not root.is_dir():
             return _error(f"transcript folder not found: {root}")
     db_path = Path(args.db).expanduser()
@@ -80,7 +87,7 @@ def _run(args: argparse.Namespace) -> int:
     conn = connect(db_path)
     try:
         if args.command == "ingest":
-            result = ingest_tree(conn, args.root)
+            result = ingest_tree(conn, root)
             print(f"files {result.files}")
             print(f"added {result.added}")
             print(f"skipped {result.skipped}")
@@ -103,6 +110,7 @@ def _search(conn, args: argparse.Namespace) -> int:
         conn,
         args.query,
         Filters(role=args.role, project=args.project, since=args.since),
+        limit=args.limit,
     )
     if not hits:
         print("No matches.")
@@ -118,11 +126,18 @@ def _search(conn, args: argparse.Namespace) -> int:
 
 def _timeline(conn, args: argparse.Namespace) -> int:
     groups = timeline(conn, args.query)
+    per_session = args.limit if args.limit is not None else args.per_session
     for group in groups:
-        print(f"{_short_id(group.session_id)} {group.project or ''}".rstrip())
-        shown = group.hits[: args.per_session]
+        first = _date(group.hits[0].ts) if group.hits else ""
+        last = _date(group.hits[-1].ts) if group.hits else ""
+        print(
+            f"{group.session_id or ''} {group.project or ''} "
+            f"{first} {last} {len(group.hits)}".rstrip()
+        )
+        shown = group.hits[:per_session]
         for hit in shown:
-            print(_one_line(hit.snippet or hit.text))
+            snippet = _one_line(hit.snippet or hit.text)
+            print(f"{_date(hit.ts)} {hit.role or ''} {snippet}".rstrip())
         extra = len(group.hits) - len(shown)
         if extra:
             print(f"... {extra} more in this session")
@@ -150,11 +165,22 @@ def _show(conn, prefix: str) -> int:
 
 def _stats(conn) -> int:
     report = stats(conn)
+    if report.events == 0:
+        print("No events indexed yet.")
+        return 0
     print(f"events {report.events}")
     print(f"sessions {report.sessions}")
     print(f"files {report.files}")
-    print(f"{_date(report.first)} {report.last and _date(report.last)}".strip())
+    if report.first or report.last:
+        print(f"{_date(report.first)} {_date(report.last)}".strip())
     return 0
+
+
+def _transcript_root(root: str | None) -> Path:
+    """Pick the transcript folder when ingest runs, so HOME is current."""
+    if root:
+        return Path(root).expanduser()
+    return Path.home() / ".claude" / "projects"
 
 
 def _prepare_stdout() -> None:

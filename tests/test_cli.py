@@ -60,6 +60,43 @@ class TestCliIngest(unittest.TestCase):
             self.assertEqual(code, 0)
             _assert_count(self, out, "added", 0)
 
+    def test_ingest_without_folder_reads_claude_projects_under_home(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            _write_jsonl(
+                os.path.join(home, ".claude", "projects", "billing", "session.jsonl"),
+                [
+                    _event(
+                        "hometranscript quinoa",
+                        session_id="sess-home",
+                        ts="2026-01-04T00:00:00Z",
+                    )
+                ],
+            )
+            previous_home = os.environ.get("HOME")
+            previous_profile = os.environ.get("USERPROFILE")
+            os.environ["HOME"] = home
+            os.environ["USERPROFILE"] = home
+            try:
+                code, out, err = _run(["ingest"])
+                self.assertEqual(code, 0, err)
+                _assert_count(self, out, "files", 1)
+                _assert_count(self, out, "added", 1)
+                self.assertNotIn("None", out)
+
+                code, found, err = _run(["search", "quinoa"])
+                self.assertEqual(code, 0, err)
+                self.assertIn("hometranscript", found)
+            finally:
+                if previous_home is None:
+                    os.environ.pop("HOME", None)
+                else:
+                    os.environ["HOME"] = previous_home
+                if previous_profile is None:
+                    os.environ.pop("USERPROFILE", None)
+                else:
+                    os.environ["USERPROFILE"] = previous_profile
+
 
 class TestCliSearch(unittest.TestCase):
     def test_search_prints_one_line_per_hit_with_snippet_on_one_line(self):
@@ -174,6 +211,29 @@ class TestCliSearch(unittest.TestCase):
             self.assertIn("keepuser", by_since)
             self.assertNotIn("dropearly", by_since)
 
+    def test_limit_and_short_option_return_two_hits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "transcripts")
+            db = os.path.join(tmp, "index.db")
+            _write_jsonl(
+                os.path.join(root, "billing", "session.jsonl"),
+                [
+                    _event(
+                        f"limitword item {n}",
+                        session_id="sess-limit",
+                        ts=f"2026-07-0{n}T00:00:00Z",
+                    )
+                    for n in (1, 2, 3)
+                ],
+            )
+            self.assertEqual(_run(["ingest", "--db", db, root])[0], 0)
+            for flag in ("--limit", "-n"):
+                with self.subTest(flag=flag):
+                    code, out, err = _run(["search", "--db", db, flag, "2", "limitword"])
+                    hits = [line for line in out.splitlines() if "limitword" in line]
+                    self.assertEqual(code, 0, err)
+                    self.assertEqual(len(hits), 2)
+
 
 class TestCliTimeline(unittest.TestCase):
     def test_timeline_prints_one_header_per_session_and_more_line(self):
@@ -213,6 +273,46 @@ class TestCliTimeline(unittest.TestCase):
             self.assertEqual(sum("beta-ses" in line for line in lines), 1)
             self.assertIn("... 2 more in this session", out)
             self.assertIn("... 1 more in this session", out)
+
+    def test_hit_line_has_date_role_and_snippet_and_header_has_range(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "transcripts")
+            db = os.path.join(tmp, "index.db")
+            _write_jsonl(
+                os.path.join(root, "billing", "alpha.jsonl"),
+                [
+                    _event(
+                        "rangeword first",
+                        session_id="alpha-session-111",
+                        ts="2026-04-01T00:00:00Z",
+                        role="user",
+                    ),
+                    _event(
+                        "rangeword second",
+                        session_id="alpha-session-111",
+                        ts="2026-04-09T00:00:00Z",
+                        role="assistant",
+                    ),
+                ],
+            )
+            self.assertEqual(_run(["ingest", "--db", db, root])[0], 0)
+            code, out, err = _run(["timeline", "--db", db, "rangeword"])
+            lines = [line for line in out.splitlines() if line.strip()]
+
+            self.assertEqual(code, 0, err)
+            headers = [
+                line for line in lines if "2026-04-01" in line and "2026-04-09" in line
+            ]
+            self.assertEqual(len(headers), 1)
+            self.assertRegex(headers[0], r"\b2\b")
+            hits = [line for line in lines if line not in headers]
+            self.assertEqual(hits[0][: len("2026-04-01 user ")], "2026-04-01 user ")
+            self.assertIn("first", hits[0])
+            self.assertEqual(
+                hits[1][: len("2026-04-09 assistant ")],
+                "2026-04-09 assistant ",
+            )
+            self.assertIn("second", hits[1])
 
 
 class TestCliShow(unittest.TestCase):
@@ -316,3 +416,12 @@ class TestCliStats(unittest.TestCase):
             _assert_count(self, out, "files", 1)
             self.assertIn("2026-01-01", out)
             self.assertIn("2026-03-01", out)
+
+    def test_empty_database_prints_no_events_indexed_yet(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "index.db")
+            code, out, err = _run(["stats", "--db", db])
+
+            self.assertEqual(code, 0, err)
+            self.assertIn("No events indexed yet.", out)
+            self.assertNotIn("None", out)
