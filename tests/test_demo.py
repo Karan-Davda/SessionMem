@@ -2,12 +2,16 @@ import contextlib
 import getpass
 import json
 import os
-import pwd
 import re
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+
+try:
+    import pwd
+except ImportError:
+    pwd = None
 
 _PROJECT = "-home-demo-acme-billing"
 _SESSION_DATES = {
@@ -51,11 +55,12 @@ def _identity():
     home = os.path.realpath(os.path.expanduser("~"))
     user = getpass.getuser()
     names = []
-    try:
-        full_name = pwd.getpwuid(os.getuid()).pw_gecos.split(",")[0]
-        names = [part for part in full_name.split() if len(part) >= 3]
-    except (AttributeError, KeyError, OSError):
-        names = []
+    if pwd is not None:
+        try:
+            full_name = pwd.getpwuid(os.getuid()).pw_gecos.split(",")[0]
+            names = [part for part in full_name.split() if len(part) >= 3]
+        except (AttributeError, KeyError, OSError):
+            names = []
     return home, user, names
 
 
