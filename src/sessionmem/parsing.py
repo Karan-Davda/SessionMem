@@ -23,6 +23,7 @@ _AWS_KEY_ID_RE = re.compile(r"AKIA[0-9A-Z]{16}")
 
 _MAX_INDEX_CHARS = 50_000
 _TOOL_BLOCK_TYPES = frozenset({"tool_use", "tool_result"})
+KIND_CHAT = "chat"
 
 
 def event_text(event: dict[str, Any]) -> str:
@@ -42,19 +43,19 @@ def event_text(event: dict[str, Any]) -> str:
 def event_kind(event: dict[str, Any]) -> str:
     """Return "tool" when every content block is a tool call or result, else "chat"."""
     if not isinstance(event, dict):
-        return "chat"
+        return KIND_CHAT
     message = event.get("message")
     if not isinstance(message, dict):
-        return "chat"
+        return KIND_CHAT
     content = message.get("content")
     if not isinstance(content, list) or not content:
-        return "chat"
+        return KIND_CHAT
     if all(
         isinstance(block, dict) and block.get("type") in _TOOL_BLOCK_TYPES
         for block in content
     ):
         return "tool"
-    return "chat"
+    return KIND_CHAT
 
 
 def index_text(text: str) -> str:
