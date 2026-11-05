@@ -178,6 +178,23 @@ def timeline(
     return sessions
 
 
+def matching_sessions(conn: sqlite3.Connection, prefix: str) -> list[str]:
+    """Return session ids that start with prefix. An empty prefix matches none."""
+    if prefix == "":
+        return []
+    rows = conn.execute(
+        """
+        SELECT DISTINCT session_id
+        FROM events
+        WHERE session_id IS NOT NULL
+          AND substr(session_id, 1, length(?)) = ?
+        ORDER BY session_id
+        """,
+        (prefix, prefix),
+    ).fetchall()
+    return [row[0] for row in rows]
+
+
 def session_messages(conn: sqlite3.Connection, prefix: str) -> list[Event]:
     """Return one session's messages, oldest first, excluding summaries."""
     if prefix == "":
