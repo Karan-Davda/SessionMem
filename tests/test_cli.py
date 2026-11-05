@@ -423,5 +423,4 @@ class TestCliStats(unittest.TestCase):
             code, out, err = _run(["stats", "--db", db])
 
             self.assertEqual(code, 0, err)
-            self.assertIn("No events indexed yet.", out)
-            self.assertNotIn("None", out)
+            self.assertEqual(out.strip(), "No events indexed yet. Run: sessionmem ingest.")

@@ -166,7 +166,7 @@ def _show(conn, prefix: str) -> int:
 def _stats(conn) -> int:
     report = stats(conn)
     if report.events == 0:
-        print("No events indexed yet.")
+        print("No events indexed yet. Run: sessionmem ingest.")
         return 0
     print(f"events {report.events}")
     print(f"sessions {report.sessions}")
