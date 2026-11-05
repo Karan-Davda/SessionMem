@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS events (
 )
 """
 
+_CREATE_EVENTS_UUID_INDEX = """
+CREATE INDEX IF NOT EXISTS ix_events_uuid ON events(uuid)
+"""
+
 _CREATE_EVENTS_FTS = """
 CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
   text,
@@ -77,6 +81,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(_CREATE_FILES)
     conn.execute(_CREATE_EVENTS)
+    conn.execute(_CREATE_EVENTS_UUID_INDEX)
     conn.execute(_CREATE_EVENTS_FTS)
     conn.execute(_CREATE_INSERT_TRIGGER)
     conn.execute(_CREATE_DELETE_TRIGGER)

@@ -38,6 +38,56 @@ class TestConnect(unittest.TestCase):
             with self.assertRaises(StoreError):
                 connect(db_path)
 
+    def test_existing_database_created_before_uuid_index_gets_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "index.db")
+            raw = sqlite3.connect(db_path)
+            raw.executescript(
+                """
+                CREATE TABLE files (
+                  path TEXT PRIMARY KEY,
+                  project TEXT NOT NULL,
+                  offset INTEGER NOT NULL
+                );
+                CREATE TABLE events (
+                  id INTEGER PRIMARY KEY,
+                  file TEXT,
+                  byte_offset INTEGER,
+                  session_id TEXT,
+                  project TEXT,
+                  cwd TEXT,
+                  uuid TEXT,
+                  ts TEXT,
+                  role TEXT,
+                  is_summary INTEGER DEFAULT 0,
+                  kind TEXT DEFAULT 'chat',
+                  raw TEXT NOT NULL,
+                  text TEXT NOT NULL,
+                  UNIQUE(file, byte_offset)
+                );
+                PRAGMA user_version = 1;
+                """
+            )
+            raw.commit()
+            before = {
+                row[0]
+                for row in raw.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'index'"
+                )
+            }
+            raw.close()
+            self.assertNotIn("ix_events_uuid", before)
+
+            conn = connect(db_path)
+            after = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'index'"
+                )
+            }
+            conn.close()
+            self.assertIn("ix_events_uuid", after)
+
 
 class TestEventsFts(unittest.TestCase):
     def test_inserted_event_is_found_by_full_text_query_then_gone_after_delete(self):
