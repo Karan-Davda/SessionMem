@@ -67,7 +67,6 @@ def _parser() -> argparse.ArgumentParser:
 
     timeline_cmd = commands.add_parser("timeline", parents=[common])
     timeline_cmd.add_argument("--per-session", type=int, default=5)
-    timeline_cmd.add_argument("-n", "--limit", type=int, default=None)
     timeline_cmd.add_argument("query")
 
     show = commands.add_parser("show", parents=[common])
@@ -126,7 +125,6 @@ def _search(conn, args: argparse.Namespace) -> int:
 
 def _timeline(conn, args: argparse.Namespace) -> int:
     groups = timeline(conn, args.query)
-    per_session = args.limit if args.limit is not None else args.per_session
     for group in groups:
         first = _date(group.hits[0].ts) if group.hits else ""
         last = _date(group.hits[-1].ts) if group.hits else ""
@@ -134,7 +132,7 @@ def _timeline(conn, args: argparse.Namespace) -> int:
             f"{group.session_id or ''} {group.project or ''} "
             f"{first} {last} {len(group.hits)}".rstrip()
         )
-        shown = group.hits[:per_session]
+        shown = group.hits[: args.per_session]
         for hit in shown:
             snippet = _one_line(hit.snippet or hit.text)
             print(f"{_date(hit.ts)} {hit.role or ''} {snippet}".rstrip())
