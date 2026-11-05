@@ -4,6 +4,7 @@ import tempfile
 import unittest
 
 from sessionmem.ingest import IngestResult, ingest_file, ingest_tree
+from sessionmem.query import search
 from sessionmem.store import connect
 
 
@@ -232,6 +233,22 @@ class TestIngestFile(unittest.TestCase):
             self.assertEqual(skipped, 0)
             self.assertEqual(role, "system")
             self.assertEqual(text, "Session started")
+
+    def test_nul_in_message_text_stays_searchable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "session.jsonl")
+            _write_jsonl(
+                path,
+                [_user_event("before\u0000after zebrafish")],
+            )
+            conn = connect(os.path.join(tmp, "index.db"))
+            ingest_file(conn, path, "demo")
+            zebrafish = search(conn, "zebrafish")
+            after = search(conn, "after")
+            conn.close()
+
+            self.assertEqual(len(zebrafish), 1)
+            self.assertEqual(len(after), 1)
 
 
 class TestIngestTree(unittest.TestCase):
